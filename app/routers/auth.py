@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 from app.database import get_db
 from app.models import User
 from app.schemas import UserResponse
@@ -76,6 +77,28 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
 
 @router.get("/api/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse(
+        id=current_user.id,
+        auth0_user_id=current_user.auth0_sub,
+        email=current_user.email,
+        username=current_user.username,
+        role=current_user.role,
+        created_at=current_user.created_at,
+        updated_at=current_user.updated_at
+    )
+
+class UserUpdateRequest(BaseModel):
+    username: Optional[str] = None
+    role: Optional[str] = None
+
+@router.put("/api/me", response_model=UserResponse)
+def update_me(request: UserUpdateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if request.username is not None:
+        current_user.username = request.username
+    if request.role is not None:
+        current_user.role = request.role
+    db.commit()
+    db.refresh(current_user)
     return UserResponse(
         id=current_user.id,
         auth0_user_id=current_user.auth0_sub,
