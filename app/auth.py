@@ -145,19 +145,21 @@ def get_current_user(payload: dict = Depends(verify_token), db: Session = Depend
     # Query db
     user = db.query(User).filter(User.auth0_sub == auth0_sub).first()
     
-    # Sync user on-demand if they don't exist yet in Supabase
+    # Link or reject unregistered users
     if not user:
-        email = payload.get("email", f"{auth0_sub.replace('|', '_')}@example.com")
-        name = payload.get("name", email.split("@")[0])
+        email = payload.get("email")
+        if email:
+            # Check if there is an existing user registered under this email
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                user.auth0_sub = auth0_sub
+                db.commit()
+                db.refresh(user)
+                return user
         
-        user = User(
-            auth0_sub=auth0_sub,
-            username=name,
-            email=email,
-            role="Personal"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not registered in the system. Please contact your admin or register first.",
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
         
     return user
