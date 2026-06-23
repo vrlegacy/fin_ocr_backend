@@ -34,6 +34,16 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     token = credentials.credentials
     
     # DEV Fallback: Allow easy local development testing
+    if token.startswith("mock-token-"):
+        parts = token.replace("mock-token-", "").split(":")
+        sub = parts[0]
+        email = parts[1] if len(parts) > 1 else f"{sub.replace('|', '_')}@example.com"
+        name = parts[2] if len(parts) > 2 else email.split("@")[0].capitalize()
+        return {
+            "sub": sub,
+            "email": email,
+            "name": name
+        }
     if token.startswith("mock-") or token == "dummy":
         return {
             "sub": "auth0|mock_user_123",

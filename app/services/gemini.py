@@ -69,3 +69,65 @@ def analyze_receipt_with_gemini(file_content: bytes, mime_type: str) -> dict:
             "discount": "₹0.00",
             "cardEnding": "None (Cash)"
         }
+
+def generate_insights_with_gemini(expenses_summary: dict) -> list:
+    # 1. Fallback if key is missing or dummy
+    if not settings.GEMINI_API_KEY or settings.GEMINI_API_KEY == "your_gemini_api_key_here":
+        print("Gemini API key is not configured for insights. Running rule-based fallback.")
+        return generate_rule_based_insights(expenses_summary)
+
+    try:
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        prompt = (
+            f"You are a helpful financial AI assistant. Analyze this financial summary for the user:\n"
+            f"- Total spent: ₹{expenses_summary['total_spent']:.2f}\n"
+            f"- Number of transactions: {expenses_summary['count']}\n"
+            f"- Category Breakdown: {expenses_summary['categories']}\n"
+            f"- Top Category: {expenses_summary['top_category']} (spent ₹{expenses_summary['top_category_amount']:.2f})\n\n"
+            "Based on this data, write exactly 3 short, punchy, actionable financial insights/recommendations "
+            "for the user. Each insight must be a single sentence of maximum 55 characters. Do not use markdown. "
+            "Return a JSON array of 3 strings, e.g. [\"You spent 15% less this week on food.\", ...]."
+        )
+        
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+            )
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"Gemini insights generation error: {e}. Falling back to rule-based insights.")
+        return generate_rule_based_insights(expenses_summary)
+
+def generate_rule_based_insights(expenses_summary: dict) -> list:
+    total = expenses_summary["total_spent"]
+    count = expenses_summary["count"]
+    top_cat = expenses_summary["top_category"]
+    top_cat_amt = expenses_summary["top_category_amount"]
+    
+    if count == 0:
+        return [
+            "Welcome! Upload your first receipt to see smart insights.",
+            "Start tracking your budget to identify potential savings.",
+            "Scan bills to extract details instantly with Gemini OCR."
+        ]
+    
+    insights = []
+    insights.append(f"Total spent so far is ₹{total:,.2f} across {count} transactions.")
+    
+    if top_cat and top_cat != "None":
+        pct = (top_cat_amt / total * 100) if total > 0 else 0
+        insights.append(f"Your top category is {top_cat}, consuming {pct:.0f}% of spend.")
+    else:
+        insights.append("Keep logging expenses to see category breakdowns.")
+        
+    if total > 5000:
+        insights.append("Consider setting a daily limit to manage high spending.")
+    else:
+        insights.append("Good job! Your current budget looks well-controlled.")
+        
+    return insights
+

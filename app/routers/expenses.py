@@ -83,3 +83,95 @@ def delete_expense(
     db.delete(expense)
     db.commit()
     return None
+
+import re
+from collections import defaultdict
+from app.services.gemini import generate_insights_with_gemini
+
+# Color mapping helper for frontend categories
+COLOR_MAP = {
+    "Food": "bg-emerald-500",
+    "Shopping": "bg-blue-500",
+    "Travel": "bg-indigo-500",
+    "Bills": "bg-amber-500",
+    "Electronics": "bg-purple-500",
+    "Others": "bg-slate-400"
+}
+
+def parse_amount(val_str: str) -> float:
+    if not val_str:
+        return 0.0
+    clean = re.sub(r"[^\d.]", "", val_str)
+    try:
+        return float(clean) if clean else 0.0
+    except ValueError:
+        return 0.0
+
+@router.get("/analysis/categories")
+def get_categories_analysis(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
+    
+    category_totals = defaultdict(float)
+    category_counts = defaultdict(int)
+    total_spend = 0.0
+    
+    for exp in expenses:
+        cat = exp.category or "Others"
+        amount = parse_amount(exp.total_amount)
+        category_totals[cat] += amount
+        category_counts[cat] += 1
+        total_spend += amount
+        
+    results = []
+    for cat, amount in category_totals.items():
+        pct = int((amount / total_spend * 100)) if total_spend > 0 else 0
+        results.append({
+            "name": cat,
+            "amount": f"₹{amount:,.2f}",
+            "numeric_amount": amount,
+            "percent": pct,
+            "color": COLOR_MAP.get(cat, "bg-slate-400"),
+            "count": category_counts[cat]
+        })
+        
+    results.sort(key=lambda x: x["numeric_amount"], reverse=True)
+    return results
+
+@router.get("/analysis/insights")
+def get_insights_analysis(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    expenses = db.query(Expense).filter(Expense.user_id == current_user.id).all()
+    
+    category_totals = defaultdict(float)
+    total_spend = 0.0
+    
+    for exp in expenses:
+        cat = exp.category or "Others"
+        amount = parse_amount(exp.total_amount)
+        category_totals[cat] += amount
+        total_spend += amount
+        
+    top_cat = "None"
+    top_cat_amt = 0.0
+    if category_totals:
+        top_cat = max(category_totals, key=category_totals.get)
+        top_cat_amt = category_totals[top_cat]
+        
+    categories_summary = {cat: f"₹{amt:.2f}" for cat, amt in category_totals.items()}
+    
+    summary = {
+        "total_spent": total_spend,
+        "count": len(expenses),
+        "categories": categories_summary,
+        "top_category": top_cat,
+        "top_category_amount": top_cat_amt
+    }
+    
+    insights = generate_insights_with_gemini(summary)
+    return insights
+

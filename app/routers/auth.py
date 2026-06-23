@@ -33,8 +33,8 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    # Return a simulated token starting with "mock-" so app/auth.py bypasses verification checks
-    mock_token = f"mock-token-{user.auth0_sub}"
+    # Return a simulated token starting with "mock-token-" containing user info for local development
+    mock_token = f"mock-token-{user.auth0_sub}:{user.email}:{user.username}"
     
     return {
         "access_token": mock_token,
@@ -62,7 +62,7 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
         db.commit()
         db.refresh(user)
     
-    mock_token = f"mock-token-{user.auth0_sub}"
+    mock_token = f"mock-token-{user.auth0_sub}:{user.email}:{user.username}"
     return {
         "access_token": mock_token,
         "user": {
