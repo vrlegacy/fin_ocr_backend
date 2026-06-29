@@ -145,7 +145,7 @@ def get_current_user(payload: dict = Depends(verify_token), db: Session = Depend
     # Query db
     user = db.query(User).filter(User.auth0_sub == auth0_sub).first()
     
-    # Link or reject unregistered users
+    # Link or register unregistered users
     if not user:
         email = payload.get("email")
         if email:
@@ -156,6 +156,22 @@ def get_current_user(payload: dict = Depends(verify_token), db: Session = Depend
                 db.commit()
                 db.refresh(user)
                 return user
+            else:
+                # Automate signup for authenticated Auth0 users!
+                username = payload.get("name") or payload.get("nickname") or email.split("@")[0]
+                user = User(
+                    auth0_sub=auth0_sub,
+                    username=username,
+                    email=email
+                )
+                try:
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+                    return user
+                except Exception as e:
+                    db.rollback()
+                    print(f"Failed to auto-create user: {e}")
         
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

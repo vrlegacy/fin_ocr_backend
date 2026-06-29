@@ -21,7 +21,6 @@ def format_amount_rupees(v: Optional[str]) -> Optional[str]:
 class UserBase(BaseModel):
     email: str
     username: Optional[str] = None
-    role: Optional[str] = None
 
 class UserCreate(UserBase):
     auth0_sub: str

@@ -20,7 +20,6 @@ class SignupRequest(BaseModel):
     username: str
     email: str
     password: str
-    role: Optional[str] = "Personal"
 
 class ResetPasswordRequest(BaseModel):
     email: str
@@ -35,8 +34,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             user = User(
                 auth0_sub="auth0|local_testuser_mail.com",
                 username="testuser",
-                email="testuser@mail.com",
-                role="Personal"
+                email="testuser@mail.com"
             )
             try:
                 db.add(user)
@@ -56,9 +54,16 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
                 "auth0_user_id": user.auth0_sub,
                 "email": user.email,
                 "name": user.username,
-                "role": user.role,
             }
         }
+
+    # Verify if user exists in local database
+    existing_user = db.query(User).filter(User.email == request.email).first()
+    if not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email. Please sign up first."
+        )
 
     auth0_url = f"https://{settings.AUTH0_DOMAIN}/oauth/token"
     payload = {
@@ -116,7 +121,6 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             "auth0_user_id": user.auth0_sub,
             "email": user.email,
             "name": user.username,
-            "role": user.role,
         }
     }
 
@@ -161,8 +165,7 @@ def signup(request: SignupRequest, db: Session = Depends(get_db)):
     new_user = User(
         auth0_sub=auth0_sub,
         username=request.username,
-        email=request.email,
-        role=request.role or "Personal"
+        email=request.email
     )
 
     try:
@@ -199,7 +202,6 @@ def signup(request: SignupRequest, db: Session = Depends(get_db)):
                     "auth0_user_id": new_user.auth0_sub,
                     "email": new_user.email,
                     "name": new_user.username,
-                    "role": new_user.role,
                 }
             }
     except Exception:
@@ -213,7 +215,6 @@ def signup(request: SignupRequest, db: Session = Depends(get_db)):
             "auth0_user_id": new_user.auth0_sub,
             "email": new_user.email,
             "name": new_user.username,
-            "role": new_user.role,
         }
     }
 
@@ -235,7 +236,6 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
             "auth0_user_id": user.auth0_sub,
             "email": user.email,
             "name": user.username,
-            "role": user.role,
         }
     }
 
@@ -246,21 +246,17 @@ def get_me(current_user: User = Depends(get_current_user)):
         auth0_user_id=current_user.auth0_sub,
         email=current_user.email,
         username=current_user.username,
-        role=current_user.role,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at
     )
 
 class UserUpdateRequest(BaseModel):
     username: Optional[str] = None
-    role: Optional[str] = None
 
 @router.put("/api/me", response_model=UserResponse)
 def update_me(request: UserUpdateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if request.username is not None:
         current_user.username = request.username
-    if request.role is not None:
-        current_user.role = request.role
     db.commit()
     db.refresh(current_user)
     return UserResponse(
@@ -268,7 +264,6 @@ def update_me(request: UserUpdateRequest, current_user: User = Depends(get_curre
         auth0_user_id=current_user.auth0_sub,
         email=current_user.email,
         username=current_user.username,
-        role=current_user.role,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at
     )
