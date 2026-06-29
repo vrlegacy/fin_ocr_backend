@@ -28,14 +28,47 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/auth/login")
 def login(request: LoginRequest, db: Session = Depends(get_db)):
+    # Bypass for test user credentials
+    if request.email == "testuser@mail.com" and request.password == "12345678":
+        user = db.query(User).filter(User.email == "testuser@mail.com").first()
+        if not user:
+            user = User(
+                auth0_sub="auth0|local_testuser_mail.com",
+                username="testuser",
+                email="testuser@mail.com",
+                role="Personal"
+            )
+            try:
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            except Exception as e:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to create local test user profile: {str(e)}"
+                )
+        mock_token = f"mock-token-{user.auth0_sub}:{user.email}:{user.username}"
+        return {
+            "access_token": mock_token,
+            "user": {
+                "id": user.id,
+                "auth0_user_id": user.auth0_sub,
+                "email": user.email,
+                "name": user.username,
+                "role": user.role,
+            }
+        }
+
     auth0_url = f"https://{settings.AUTH0_DOMAIN}/oauth/token"
     payload = {
-        "grant_type": "password",
+        "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
         "username": request.email,
         "password": request.password,
-        "audience": settings.AUTH0_AUDIENCE,
+        "audience": settings.AUDIENCE if hasattr(settings, 'AUDIENCE') else (settings.AUTH0_AUDIENCE if hasattr(settings, 'AUTH0_AUDIENCE') else ""),
         "client_id": settings.AUTH0_CLIENT_ID,
         "client_secret": settings.AUTH0_CLIENT_SECRET,
+        "realm": "Username-Password-Authentication",
         "scope": "openid profile email"
     }
 
@@ -145,12 +178,13 @@ def signup(request: SignupRequest, db: Session = Depends(get_db)):
 
     # 4. Automate login to return access token
     login_payload = {
-        "grant_type": "password",
+        "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
         "username": request.email,
         "password": request.password,
         "audience": settings.AUTH0_AUDIENCE,
         "client_id": settings.AUTH0_CLIENT_ID,
         "client_secret": settings.AUTH0_CLIENT_SECRET,
+        "realm": "Username-Password-Authentication",
         "scope": "openid profile email"
     }
 
