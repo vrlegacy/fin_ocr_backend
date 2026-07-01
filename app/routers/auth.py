@@ -57,14 +57,6 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             }
         }
 
-    # Verify if user exists in local database
-    existing_user = db.query(User).filter(User.email == request.email).first()
-    if not existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No account found with this email. Please sign up first."
-        )
-
     auth0_url = f"https://{settings.AUTH0_DOMAIN}/oauth/token"
     payload = {
         "grant_type": "http://auth0.com/oauth/grant-type/password-realm",
@@ -94,25 +86,51 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         )
 
     access_token = response_json.get("access_token")
-
-    # Fetch user from local database
-    user = db.query(User).filter(User.email == request.email).first()
-    if not user:
+    if not access_token:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User profile not found in local system database."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Auth0 returned no access token after login."
         )
 
-    # Link auth0_sub dynamically if not set
-    try:
-        claims = jwt.get_unverified_claims(access_token)
-        auth0_sub = claims.get("sub")
-        if auth0_sub and not user.auth0_sub:
-            user.auth0_sub = auth0_sub
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        # If Auth0 credentials are valid but the local user profile is missing, create it automatically.
+        auth0_sub = None
+        username = request.email.split("@")[0]
+        try:
+            claims = jwt.get_unverified_claims(access_token)
+            auth0_sub = claims.get("sub")
+            username = claims.get("name") or username
+        except Exception:
+            pass
+
+        user = User(
+            auth0_sub=auth0_sub or f"auth0|local_{request.email.replace('@', '_')}",
+            username=username,
+            email=request.email
+        )
+        try:
+            db.add(user)
             db.commit()
             db.refresh(user)
-    except Exception:
-        pass
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create local user profile after Auth0 login: {str(e)}"
+            )
+
+    else:
+        # Link auth0_sub dynamically if not set
+        try:
+            claims = jwt.get_unverified_claims(access_token)
+            auth0_sub = claims.get("sub")
+            if auth0_sub and not user.auth0_sub:
+                user.auth0_sub = auth0_sub
+                db.commit()
+                db.refresh(user)
+        except Exception:
+            pass
 
     return {
         "access_token": access_token,
