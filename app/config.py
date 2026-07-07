@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     AUTH0_CLIENT_ID: str = ""
     AUTH0_CLIENT_SECRET: str = ""
     GEMINI_API_KEY: str = ""
+    ALLOWED_ORIGINS: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
