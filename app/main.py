@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app import models
 from app.routers import auth, expenses, ocr
+from app.config import settings
 
 # Create tables in Database (Supabase PostgreSQL / Local SQLite)
 models.Base.metadata.create_all(bind=engine)
